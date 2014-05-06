@@ -2323,7 +2323,6 @@ impl<A> FromIterator<A> for ~[A] {
         xs.shrink_to_fit();
 
         let len = xs.len();
-        assert!(len == xs.capacity());
         let data = xs.as_mut_ptr();
 
         let data_size = len.checked_mul(&mem::size_of::<A>());
