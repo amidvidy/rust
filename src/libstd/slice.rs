@@ -112,7 +112,7 @@ use num::CheckedMul;
 use option::{None, Option, Some};
 use ptr;
 use ptr::RawPtr;
-use rt::global_heap::{malloc_raw, exchange_free};
+use rt::heap::{exchange_malloc, exchange_free};
 use result::{Ok, Err};
 use mem;
 use mem::size_of;
@@ -2305,7 +2305,8 @@ impl<T> Drop for MoveItems<T> {
         // destroy the remaining elements
         for _x in *self {}
         unsafe {
-            exchange_free(self.allocation as *u8)
+            // FIXME: #13994 (should pass align and size here)
+            exchange_free(self.allocation, 0, 8)
         }
     }
 }
@@ -2315,6 +2316,7 @@ impl<T> Drop for MoveItems<T> {
 pub type RevMoveItems<T> = Rev<MoveItems<T>>;
 
 impl<A> FromIterator<A> for ~[A] {
+    #[cfg(stage0)]
     fn from_iter<T: Iterator<A>>(mut iterator: T) -> ~[A] {
         let mut xs: Vec<A> = iterator.collect();
 
@@ -2335,7 +2337,40 @@ impl<A> FromIterator<A> for ~[A] {
         // with DST because creating ~[T] from Vec<T> will just be some pointer
         // swizzling.
         unsafe {
-            let ret = malloc_raw(size) as *mut RawVec<()>;
+            let ret = exchange_malloc(size) as *mut RawVec<()>;
+
+            (*ret).fill = len * mem::nonzero_size_of::<A>();
+            (*ret).alloc = len * mem::nonzero_size_of::<A>();
+            ptr::copy_nonoverlapping_memory(&mut (*ret).data as *mut _ as *mut u8,
+                                            data as *u8,
+                                            data_size);
+            xs.set_len(0); // ownership has been transferred
+            cast::transmute(ret)
+        }
+    }
+
+    #[cfg(not(stage0))]
+    fn from_iter<T: Iterator<A>>(mut iterator: T) -> ~[A] {
+        let mut xs: Vec<A> = iterator.collect();
+
+        // Must shrink so the capacity is the same as the length. The length of
+        // the ~[T] vector must exactly match the length of the allocation.
+        xs.shrink_to_fit();
+
+        let len = xs.len();
+        let data = xs.as_mut_ptr();
+
+        let data_size = len.checked_mul(&mem::size_of::<A>());
+        let data_size = data_size.expect("overflow in from_iter()");
+        let size = mem::size_of::<RawVec<()>>().checked_add(&data_size);
+        let size = size.expect("overflow in from_iter()");
+
+
+        // This is some terribly awful code. Note that all of this will go away
+        // with DST because creating ~[T] from Vec<T> will just be some pointer
+        // swizzling.
+        unsafe {
+            let ret = exchange_malloc(size, 8) as *mut RawVec<()>;
 
             (*ret).fill = len * mem::nonzero_size_of::<A>();
             (*ret).alloc = len * mem::nonzero_size_of::<A>();

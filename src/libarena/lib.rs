@@ -35,7 +35,7 @@ use std::ptr::read;
 use std::cmp;
 use std::num;
 use std::rc::Rc;
-use std::rt::global_heap;
+use std::rt::heap::exchange_malloc;
 use std::intrinsics::{TyDesc, get_tydesc};
 use std::intrinsics;
 
@@ -364,7 +364,7 @@ impl<T> TypedArenaChunk<T> {
         size = size.checked_add(&elems_size).unwrap();
 
         let mut chunk = unsafe {
-            let chunk = global_heap::exchange_malloc(size);
+            let chunk = exchange_malloc(size);
             let mut chunk: ~TypedArenaChunk<T> = cast::transmute(chunk);
             mem::move_val_init(&mut chunk.next, next);
             chunk
@@ -384,7 +384,7 @@ impl<T> TypedArenaChunk<T> {
         size = size.checked_add(&elems_size).unwrap();
 
         let mut chunk = unsafe {
-            let chunk = global_heap::exchange_malloc(size, min_align_of::<TypedArenaChunk<T>>());
+            let chunk = exchange_malloc(size, min_align_of::<TypedArenaChunk<T>>());
             let mut chunk: ~TypedArenaChunk<T> = cast::transmute(chunk);
             mem::move_val_init(&mut chunk.next, next);
             chunk
